@@ -1,0 +1,15 @@
+                 ESP32-WROOM
+              ┌───────────────┐
+              │               │
+ OLED VCC ────┤ 3V3           │
+ OLED GND ────┤ GND           │
+ OLED SDA ────┤ GPIO 21       │
+ OLED SCL ────┤ GPIO 22       │
+              │               │
+ BUTTON ──────┤ GPIO 27       │
+ BUTTON ──────┤ GND           │
+              │               │
+ BUZZER + ────┤ GPIO 25       │
+ BUZZER - ────┤ GND           │
+              │               │
+              └───────────────┘
