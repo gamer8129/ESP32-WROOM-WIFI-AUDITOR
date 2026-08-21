@@ -1,0 +1,1 @@
+If there is an error with  #include <Adafruit_SSD1306.h>  use  #include <Adafruit_SH110X.h>
