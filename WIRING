@@ -1,0 +1,17 @@
+
+# COMPLETE WIRING
+  OLED → ESP32
+1.VCC	3V3
+2.GND	GND
+3.SDA	GPIO 21
+4.SCL	GPIO 22
+
+  Push button → ESP32
+  1.GPIO 27
+  2.GND
+
+    Buzzer → ESP32
+1.+	GPIO 25
+2.−	GND
+    
+  
