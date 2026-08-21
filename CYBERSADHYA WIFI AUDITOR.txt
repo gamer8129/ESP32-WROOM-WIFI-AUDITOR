@@ -1,0 +1,626 @@
+#include <WiFi.h>
+#include <Wire.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SH110X.h>
+
+// =====================================================
+// CYBERSADHYA - ESP32 WiFi Security Auditor
+// ESP32-WROOM + SH1106/SH110X 128x64 OLED
+// =====================================================
+
+// ---------------- OLED ----------------
+
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64
+
+#define OLED_SDA 21
+#define OLED_SCL 22
+#define OLED_RESET -1
+
+Adafruit_SH1106G display(
+  SCREEN_WIDTH,
+  SCREEN_HEIGHT,
+  &Wire,
+  OLED_RESET
+);
+
+// ---------------- Hardware ----------------
+
+#define BUTTON_PIN 27
+#define BUZZER_PIN 25
+
+// ---------------- Variables ----------------
+
+int networkCount = 0;
+int selectedNetwork = 0;
+
+bool lastButtonState = HIGH;
+
+unsigned long lastButtonTime = 0;
+
+const unsigned long debounceTime = 250;
+
+
+// =====================================================
+// SECURITY TYPE
+// =====================================================
+
+String getSecurityType(wifi_auth_mode_t encryption)
+{
+  switch (encryption)
+  {
+    case WIFI_AUTH_OPEN:
+      return "OPEN";
+
+    case WIFI_AUTH_WEP:
+      return "WEP";
+
+    case WIFI_AUTH_WPA_PSK:
+      return "WPA";
+
+    case WIFI_AUTH_WPA2_PSK:
+      return "WPA2";
+
+    case WIFI_AUTH_WPA_WPA2_PSK:
+      return "WPA/WPA2";
+
+    case WIFI_AUTH_WPA2_ENTERPRISE:
+      return "WPA2-ENT";
+
+    case WIFI_AUTH_WPA3_PSK:
+      return "WPA3";
+
+    case WIFI_AUTH_WPA2_WPA3_PSK:
+      return "WPA2/WPA3";
+
+    default:
+      return "UNKNOWN";
+  }
+}
+
+
+// =====================================================
+// SECURITY RATING
+// =====================================================
+
+String getSecurityRating(wifi_auth_mode_t encryption)
+{
+  switch (encryption)
+  {
+    case WIFI_AUTH_OPEN:
+      return "DANGER";
+
+    case WIFI_AUTH_WEP:
+      return "WEAK";
+
+    case WIFI_AUTH_WPA_PSK:
+      return "WEAK";
+
+    case WIFI_AUTH_WPA2_PSK:
+      return "GOOD";
+
+    case WIFI_AUTH_WPA_WPA2_PSK:
+      return "GOOD";
+
+    case WIFI_AUTH_WPA2_ENTERPRISE:
+      return "STRONG";
+
+    case WIFI_AUTH_WPA3_PSK:
+      return "STRONG";
+
+    case WIFI_AUTH_WPA2_WPA3_PSK:
+      return "STRONG";
+
+    default:
+      return "UNKNOWN";
+  }
+}
+
+
+// =====================================================
+// BUZZER
+// =====================================================
+
+void beep(int duration)
+{
+  digitalWrite(BUZZER_PIN, HIGH);
+  delay(duration);
+  digitalWrite(BUZZER_PIN, LOW);
+}
+
+
+// =====================================================
+// STARTUP SCREEN
+// =====================================================
+
+void showStartup()
+{
+  display.clearDisplay();
+
+  display.setTextColor(SH110X_WHITE);
+
+  display.setTextSize(2);
+
+  display.setCursor(12, 2);
+  display.println("CYBER");
+
+  display.setCursor(12, 22);
+  display.println("SADHYA");
+
+  display.setTextSize(1);
+
+  display.setCursor(20, 45);
+  display.println("WiFi AUDITOR");
+
+  display.display();
+
+  delay(2500);
+
+  display.clearDisplay();
+
+  display.setTextSize(1);
+
+  display.setCursor(25, 12);
+  display.println("WIFI SECURITY");
+
+  display.setCursor(22, 28);
+  display.println("AUDITOR READY");
+
+  display.setCursor(18, 48);
+  display.println("PRESS BUTTON");
+
+  display.display();
+}
+
+
+// =====================================================
+// SCANNING SCREEN
+// =====================================================
+
+void showScanning()
+{
+  display.clearDisplay();
+
+  display.setTextColor(SH110X_WHITE);
+
+  display.setTextSize(1);
+
+  display.setCursor(28, 10);
+  display.println("WIFI AUDITOR");
+
+  display.setCursor(38, 27);
+  display.println("SCANNING");
+
+  display.setCursor(50, 42);
+  display.println("...");
+
+  display.display();
+}
+
+
+// =====================================================
+// NO NETWORK SCREEN
+// =====================================================
+
+void showNoNetworks()
+{
+  display.clearDisplay();
+
+  display.setTextColor(SH110X_WHITE);
+
+  display.setTextSize(1);
+
+  display.setCursor(35, 8);
+  display.println("WIFI AUDITOR");
+
+  display.setTextSize(2);
+
+  display.setCursor(28, 25);
+  display.println("NONE");
+
+  display.setTextSize(1);
+
+  display.setCursor(22, 50);
+  display.println("PRESS TO RESCAN");
+
+  display.display();
+}
+
+
+// =====================================================
+// WIFI SCAN
+// =====================================================
+
+void scanWiFi()
+{
+  showScanning();
+
+  Serial.println();
+  Serial.println("============================");
+  Serial.println("Starting WiFi scan...");
+  Serial.println("============================");
+
+  WiFi.scanDelete();
+
+  networkCount = WiFi.scanNetworks(
+    false,   // async = false
+    true     // show hidden networks
+  );
+
+  if (networkCount < 0)
+  {
+    networkCount = 0;
+  }
+
+  Serial.print("Networks found: ");
+  Serial.println(networkCount);
+
+  selectedNetwork = 0;
+
+  delay(500);
+}
+
+
+// =====================================================
+// DISPLAY NETWORK
+// =====================================================
+
+void showNetwork(int index)
+{
+  if (networkCount == 0)
+  {
+    showNoNetworks();
+    return;
+  }
+
+  String ssid = WiFi.SSID(index);
+
+  int rssi = WiFi.RSSI(index);
+
+  int channel = WiFi.channel(index);
+
+  wifi_auth_mode_t encryption =
+    WiFi.encryptionType(index);
+
+  String security =
+    getSecurityType(encryption);
+
+  String rating =
+    getSecurityRating(encryption);
+
+
+  // ---------------- Serial Monitor ----------------
+
+  Serial.println();
+  Serial.println("----------------------------");
+
+  Serial.print("Network: ");
+  Serial.println(index + 1);
+
+  Serial.print("SSID: ");
+  Serial.println(ssid);
+
+  Serial.print("RSSI: ");
+  Serial.print(rssi);
+  Serial.println(" dBm");
+
+  Serial.print("Channel: ");
+  Serial.println(channel);
+
+  Serial.print("Security: ");
+  Serial.println(security);
+
+  Serial.print("Rating: ");
+  Serial.println(rating);
+
+
+  // ---------------- OLED ----------------
+
+  display.clearDisplay();
+
+  display.setTextColor(SH110X_WHITE);
+
+  display.setTextSize(1);
+
+
+  // Network counter
+
+  display.setCursor(0, 0);
+
+  display.print("NET ");
+
+  display.print(index + 1);
+
+  display.print("/");
+
+  display.print(networkCount);
+
+
+  // Signal
+
+  display.setCursor(82, 0);
+
+  display.print(rssi);
+
+  display.print("dB");
+
+
+  // SSID
+
+  display.setCursor(0, 12);
+
+  if (ssid.length() == 0)
+  {
+    display.println("<HIDDEN SSID>");
+  }
+  else
+  {
+    if (ssid.length() > 20)
+    {
+      ssid = ssid.substring(0, 20);
+    }
+
+    display.println(ssid);
+  }
+
+
+  // Channel
+
+  display.setCursor(0, 26);
+
+  display.print("CH:");
+
+  display.print(channel);
+
+
+  // Security
+
+  display.setCursor(48, 26);
+
+  display.print("SEC:");
+
+  display.println(security);
+
+
+  // Rating
+
+  display.setCursor(0, 40);
+
+  display.print("RATING:");
+
+  display.println(rating);
+
+
+  // Signal bar
+
+  display.setCursor(0, 53);
+
+  display.print("SIGNAL:");
+
+  int bars = 0;
+
+  if (rssi > -50)
+    bars = 5;
+
+  else if (rssi > -60)
+    bars = 4;
+
+  else if (rssi > -70)
+    bars = 3;
+
+  else if (rssi > -80)
+    bars = 2;
+
+  else
+    bars = 1;
+
+
+  for (int i = 0; i < 5; i++)
+  {
+    if (i < bars)
+      display.print("#");
+    else
+      display.print("-");
+  }
+
+
+  display.display();
+
+
+  // ---------------- Open Network Alert ----------------
+
+  if (encryption == WIFI_AUTH_OPEN)
+  {
+    delay(200);
+
+    beep(100);
+
+    delay(100);
+
+    beep(100);
+  }
+}
+
+
+// =====================================================
+// BUTTON
+// =====================================================
+
+void checkButton()
+{
+  bool buttonState =
+    digitalRead(BUTTON_PIN);
+
+
+  // Button pressed
+
+  if (
+    lastButtonState == HIGH &&
+    buttonState == LOW
+  )
+  {
+    if (
+      millis() - lastButtonTime >
+      debounceTime
+    )
+    {
+      lastButtonTime = millis();
+
+
+      // First press
+      // Scan networks
+
+      if (networkCount == 0)
+      {
+        scanWiFi();
+
+        if (networkCount > 0)
+        {
+          showNetwork(selectedNetwork);
+        }
+        else
+        {
+          showNoNetworks();
+        }
+      }
+
+
+      // Next network
+
+      else
+      {
+        selectedNetwork++;
+
+        if (
+          selectedNetwork >=
+          networkCount
+        )
+        {
+          selectedNetwork = 0;
+        }
+
+        showNetwork(selectedNetwork);
+      }
+    }
+  }
+
+
+  lastButtonState =
+    buttonState;
+}
+
+
+// =====================================================
+// SETUP
+// =====================================================
+
+void setup()
+{
+  Serial.begin(115200);
+
+  delay(500);
+
+
+  // Hardware
+
+  pinMode(
+    BUTTON_PIN,
+    INPUT_PULLUP
+  );
+
+  pinMode(
+    BUZZER_PIN,
+    OUTPUT
+  );
+
+  digitalWrite(
+    BUZZER_PIN,
+    LOW
+  );
+
+
+  // OLED
+
+  Wire.begin(
+    OLED_SDA,
+    OLED_SCL
+  );
+
+
+  if (
+    !display.begin(
+      0x3C,
+      true
+    )
+  )
+  {
+    Serial.println(
+      "SH110X OLED not found!"
+    );
+
+    while (true)
+    {
+      digitalWrite(
+        BUZZER_PIN,
+        HIGH
+      );
+
+      delay(100);
+
+      digitalWrite(
+        BUZZER_PIN,
+        LOW
+      );
+
+      delay(1000);
+    }
+  }
+
+
+  // OLED setup
+
+  display.clearDisplay();
+
+  display.setTextColor(
+    SH110X_WHITE
+  );
+
+  display.display();
+
+
+  // WiFi setup
+
+  WiFi.mode(
+    WIFI_STA
+  );
+
+  WiFi.disconnect();
+
+  delay(500);
+
+
+  // Startup
+
+  showStartup();
+
+
+  Serial.println();
+  Serial.println("==============================");
+  Serial.println("   CYBERSADHYA WIFI AUDITOR");
+  Serial.println("==============================");
+  Serial.println("ESP32 WiFi Security Scanner");
+  Serial.println("Ready.");
+  Serial.println("==============================");
+}
+
+
+// =====================================================
+// LOOP
+// =====================================================
+
+void loop()
+{
+  checkButton();
+
+  delay(10);
+}
